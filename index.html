@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Start Clock</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: sans-serif;
+      background: #f5f5f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    header {
+      width: 100%;
+      background: #f39716f9;
+      color: white;
+      padding: 16px 24px;
+      font-size: 20px;
+      font-weight: 500;
+    }
+
+    main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      width: 100%;
+      max-width: 480px;
+      padding: 32px 24px;
+    }
+
+    .label {
+      font-size: 16px;
+      color: #333;
+      margin-bottom: 12px;
+    }
+
+    .interval-btns {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 48px;
+    }
+
+    .interval-btns button {
+      padding: 10px 20px;
+      font-size: 15px;
+      border: none;
+      border-radius: 6px;
+      background: #e0e0e0;
+      color: #333;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .interval-btns button.active {
+      background: #1565C0;
+      color: white;
+    }
+
+    .interval-btns button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .display {
+      font-size: 80px;
+      font-weight: bold;
+      color: #212121;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      letter-spacing: 2px;
+      transition: color 0.3s;
+    }
+
+    .display.warning { color: #e53935; }
+
+    .action-btns {
+      display: flex;
+      gap: 24px;
+      margin-top: 48px;
+    }
+
+    .action-btns button {
+      padding: 14px 36px;
+      font-size: 18px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+
+    .action-btns button:active { transform: scale(0.97); }
+
+    #start-btn {
+      background: #0b8a28e6;
+      color: white;
+    }
+
+    #stop-btn {
+      background: #f44336;
+      color: white;
+    }
+
+    .action-btns button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <header>Orienteering Start Clock</header>
+  <main>
+    <p class="label">Select starting interval</p>
+    <div class="interval-btns">
+      <button id="btn-30"  onclick="selectDuration(30)"  class="active">30 s</button>
+      <button id="btn-60"  onclick="selectDuration(60)">1 min</button>
+      <button id="btn-120" onclick="selectDuration(120)">2 min</button>
+    </div>
+
+    <div class="display" id="display">00:30</div>
+
+    <div class="action-btns">
+      <button id="start-btn" onclick="startTimer()">Start</button>
+      <button id="stop-btn"  onclick="stopTimer()" disabled>Stop</button>
+    </div>
+  </main>
+
+  <script>
+    let selected = 30;
+    let remaining = 30;
+    let running = false;
+    let interval = null;
+    let audioCtx = null;
+
+    function getAudioCtx() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return audioCtx;
+    }
+
+    function beep(frequency, duration, volume) {
+      const ctx = getAudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'square';
+      osc.frequency.value = frequency;
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.005);
+      gain.gain.setValueAtTime(volume, ctx.currentTime + duration - 0.01);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + duration);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + duration + 0.01);
+    }
+
+    function beepEnd() {
+      beep(1046, 0.6, 0.35);
+    }
+
+    function fmt(s) {
+      return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    }
+
+    function selectDuration(secs) {
+      if (running) return;
+      selected = secs;
+      remaining = secs;
+      document.getElementById('display').textContent = fmt(secs);
+      document.getElementById('display').classList.remove('warning');
+      [30, 60, 120].forEach(v => {
+        document.getElementById('btn-' + v).classList.toggle('active', v === secs);
+      });
+    }
+
+    function setRunningUI(isRunning) {
+      document.getElementById('start-btn').disabled = isRunning;
+      document.getElementById('stop-btn').disabled = !isRunning;
+      [30, 60, 120].forEach(v => document.getElementById('btn-' + v).disabled = isRunning);
+    }
+
+    function startTimer() {
+      if (running) return;
+      running = true;
+      remaining = selected;
+      document.getElementById('display').classList.remove('warning');
+      setRunningUI(true);
+
+      interval = setInterval(() => {
+        remaining--;
+        document.getElementById('display').textContent = fmt(remaining);
+
+        if (remaining <= 5 && remaining > 0) {
+          document.getElementById('display').classList.add('warning');
+          beep(1046, 0.12, 0.35);
+        }
+
+        if (remaining <= 0) {
+          clearInterval(interval);
+          beepEnd();
+          setTimeout(() => {
+            document.getElementById('display').classList.remove('warning');
+            running = false;
+            startTimer();
+          }, 750);
+        }
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(interval);
+      running = false;
+      remaining = 0;
+      document.getElementById('display').textContent = fmt(selected);
+      document.getElementById('display').classList.remove('warning');
+      setRunningUI(false);
+    }
+  </script>
+</body>
+</html>
